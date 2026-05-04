@@ -1,0 +1,506 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  DESIGNER
+  PRODUCTION
+  SUPPORT
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum PrintArea {
+  FRONT
+  BACK
+  LEFT_CHEST
+  RIGHT_CHEST
+  LEFT_SLEEVE
+  RIGHT_SLEEVE
+}
+
+enum DesignStatus {
+  DRAFT
+  SUBMITTED
+  NEEDS_REVISION
+  APPROVED
+  REJECTED
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAYMENT_REVIEW
+  DESIGN_REVIEW
+  WAITING_CUSTOMER_APPROVAL
+  READY_FOR_PRODUCTION
+  IN_PRODUCTION
+  QUALITY_CHECK
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  UNPAID
+  DEPOSIT_PENDING
+  DEPOSIT_PAID
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  INSTAPAY
+  VODAFONE_CASH
+  CASH_ON_DELIVERY
+  BANK_TRANSFER
+  MANUAL
+}
+
+enum ShipmentStatus {
+  NOT_READY
+  READY
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  RETURNED
+  LOST
+}
+
+enum AddressType {
+  HOME
+  WORK
+  OTHER
+}
+
+enum ArtworkType {
+  IMAGE
+  TEXT
+  VECTOR
+  MOCKUP
+  REFERENCE
+}
+
+model AdminUser {
+  id       String   @id @default(cuid())
+  name     String
+  email    String   @unique
+  role     UserRole @default(ADMIN)
+  imageUrl String?
+  isActive Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reviewedDesigns DesignReview[]
+  statusLogs      OrderStatusLog[]
+}
+
+model Customer {
+  id    String  @id @default(cuid())
+  name  String
+  phone String
+  email String?
+
+  notes     String?
+  isBlocked Boolean @default(false)
+
+  addresses Address[]
+  orders    Order[]
+  designs   Design[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([phone])
+  @@index([phone])
+  @@index([email])
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  type      AddressType @default(HOME)
+  label     String?
+  city      String
+  area      String
+  street    String
+  building  String?
+  floor     String?
+  apartment String?
+  landmark  String?
+  notes     String?
+
+  isDefault Boolean @default(false)
+
+  orders Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([city])
+}
+
+model Category {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String?
+  imageUrl    String?
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id         String    @id @default(cuid())
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  name             String
+  slug             String  @unique
+  description      String?
+  shortDescription String?
+
+  basePrice      Int
+  compareAtPrice Int?
+  depositAmount  Int?
+  status         ProductStatus @default(DRAFT)
+
+  mainImageUrl String?
+  gallery      String[] @default([])
+
+  material         String?
+  fit              String?
+  careInstructions String?
+
+  allowCustomText  Boolean @default(true)
+  allowCustomImage Boolean @default(true)
+  allowBackPrint   Boolean @default(true)
+  allowSleevePrint Boolean @default(false)
+
+  variants     ProductVariant[]
+  printOptions ProductPrintOption[]
+  orderItems   OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([status])
+  @@index([slug])
+}
+
+model ProductVariant {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  sku       String? @unique
+  colorName String
+  colorHex  String?
+  size      String
+
+  stock    Int     @default(0)
+  isActive Boolean @default(true)
+
+  priceAdjustment Int @default(0)
+
+  orderItems OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, colorName, size])
+  @@index([productId])
+  @@index([size])
+  @@index([colorName])
+}
+
+model ProductPrintOption {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  area      PrintArea
+  label     String
+  extraCost Int       @default(0)
+
+  maxWidthCm  Float?
+  maxHeightCm Float?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, area])
+  @@index([productId])
+}
+
+model DesignTemplate {
+  id          String  @id @default(cuid())
+  title       String
+  slug        String  @unique
+  vibe        String?
+  description String?
+
+  previewUrl String?
+  artworkUrl String?
+
+  tags      String[] @default([])
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+
+  designs Design[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([vibe])
+  @@index([isActive])
+}
+
+model Design {
+  id String @id @default(cuid())
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  templateId String?
+  template   DesignTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  title String?
+  vibe  String?
+  notes String?
+
+  frontText  String?
+  backText   String?
+  sleeveText String?
+
+  preferredPlacement PrintArea?
+  mockupUrl          String?
+  finalArtworkUrl    String?
+
+  status DesignStatus @default(DRAFT)
+
+  artworks   Artwork[]
+  reviews    DesignReview[]
+  orderItems OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([templateId])
+  @@index([status])
+}
+
+model Artwork {
+  id       String @id @default(cuid())
+  designId String
+  design   Design @relation(fields: [designId], references: [id], onDelete: Cascade)
+
+  type      ArtworkType
+  url       String
+  filename  String?
+  mimeType  String?
+  sizeBytes Int?
+
+  width  Int?
+  height Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([designId])
+  @@index([type])
+}
+
+model DesignReview {
+  id       String @id @default(cuid())
+  designId String
+  design   Design @relation(fields: [designId], references: [id], onDelete: Cascade)
+
+  reviewerId String?
+  reviewer   AdminUser? @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  status       DesignStatus
+  message      String?
+  internalNote String?
+
+  createdAt DateTime @default(now())
+
+  @@index([designId])
+  @@index([reviewerId])
+}
+
+model Order {
+  id        String @id @default(cuid())
+  orderCode String @unique
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  addressId String?
+  address   Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+
+  status        OrderStatus   @default(PENDING_PAYMENT)
+  paymentStatus PaymentStatus @default(UNPAID)
+
+  customerName  String
+  customerPhone String
+  customerEmail String?
+
+  shippingCity    String
+  shippingArea    String
+  shippingAddress String
+  shippingNotes   String?
+
+  subtotal      Int
+  discount      Int @default(0)
+  shippingFee   Int @default(0)
+  depositAmount Int @default(0)
+  total         Int
+
+  customerNotes String?
+  internalNotes String?
+
+  items      OrderItem[]
+  payments   Payment[]
+  shipment   Shipment?
+  statusLogs OrderStatusLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([orderCode])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([customerPhone])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  designId String?
+  design   Design? @relation(fields: [designId], references: [id], onDelete: SetNull)
+
+  productName String
+  colorName   String
+  size        String
+  quantity    Int    @default(1)
+  unitPrice   Int
+  totalPrice  Int
+
+  printAreas PrintArea[] @default([])
+  itemNotes  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([variantId])
+  @@index([designId])
+}
+
+model Payment {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  method PaymentMethod
+  status PaymentStatus @default(DEPOSIT_PENDING)
+
+  amount         Int
+  transactionRef String?
+  proofImageUrl  String?
+
+  paidAt     DateTime?
+  reviewedAt DateTime?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([method])
+  @@index([status])
+  @@index([transactionRef])
+}
+
+model Shipment {
+  id String @id @default(cuid())
+
+  orderId String @unique
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  status         ShipmentStatus @default(NOT_READY)
+  carrierName    String?
+  trackingNumber String?
+  trackingUrl    String?
+
+  shippedAt   DateTime?
+  deliveredAt DateTime?
+  returnedAt  DateTime?
+
+  shippingCost Int?
+  notes        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([trackingNumber])
+}
+
+model OrderStatusLog {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+
+  changedById String?
+  changedBy   AdminUser? @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([changedById])
+  @@index([toStatus])
+}
